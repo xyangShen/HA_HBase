@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+ <!-- NameNode 数据存储目录 -->
+ <property>
+   <name>dfs.namenode.name.dir</name>
+   <value>${hadoop.tmp.dir}/name</value>
+ </property>
+ <!-- DataNode 数据存储目录 -->
+ <property>
+   <name>dfs.datanode.data.dir</name>
+   <value>${hadoop.tmp.dir}/data</value>
+ </property>
+ <!-- JournalNode 数据存储目录（绝对路径，不能带 file://） -->
+ <property>
+   <name>dfs.journalnode.edits.dir</name>
+   <value>${hadoop.tmp.dir}/journal</value>
+ </property>
+ <!-- HDFS 集群名称 -->
+ <property>
+   <name>dfs.nameservices</name>
+   <value>{{ hdfs_name }}</value>
+ </property>
+ <!-- 集群 NameNode 节点列表 -->
+ <property>
+   <name>dfs.ha.namenodes.{{hdfs_name}}</name>
+   <value>{{ groups['namenodes'] | map('extract', hostvars) | map(attribute='id') | join(',') }}</value>
+ </property>
+ <!-- NameNode RPC 地址 -->
+ {% for host in groups['namenodes'] %}
+ <property>
+   <name>dfs.namenode.rpc-address.{{hdfs_name}}.{{hostvars[host]['id']}}</name>
+   <value>{{host}}:{{hostvars[host]['rpc_port']}}</value>
+ </property>
+ {% endfor %}
+ <!-- NameNode HTTP 地址 -->
+ {% for host in groups['namenodes'] %}
+ <property>
+   <name>dfs.namenode.http-address.{{hdfs_name}}.{{hostvars[host]['id']}}</name>
+    <value>{{host}}:{{hostvars[host]['http_port']}}</value>
+ </property>
+ {% endfor %}
+ <!-- NameNode 元数据在 JournalNode 上的存放位置 -->
+ <property>
+   <name>dfs.namenode.shared.edits.dir</name>
+   <value>qjournal://{{groups['journalnodes'] | zip( groups['journalnodes']|map('extract', hostvars)|map(attribute='journal_port') )| map('join', ':') | join(';') }}/{{hdfs_name}}</value>
+ </property>
+ <!-- fail-over 代理类 (client 通过 proxy 来确定 Active NameNode) -->
+ <property>
+   <name>dfs.client.failover.proxy.provider.my-hdfs</name>
+   <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+ </property>
+ <!-- 隔离机制 (保证只存在唯一的 Active NameNode) -->
+ <property>
+   <name>dfs.ha.fencing.methods</name>
+   <value>sshfence</value>
+ </property>
+ <!-- SSH 隔离机制依赖的登录秘钥 -->
+ <property>
+   <name>dfs.ha.fencing.ssh.private-key-files</name>
+   <value>/home/{{ ansible_user }}/.ssh/id_rsa</value>
+ </property>
+ <!-- 启用自动故障转移 -->
+ <property>
+    <name>dfs.ha.automatic-failover.enabled</name>
+   <value>true</value>
+ </property>
+ <!-- NameNode 工作线程数量 -->
+ <property>
+   <name>dfs.namenode.handler.count</name>
+   <value>21</value>
+ </property>
+</configuration>

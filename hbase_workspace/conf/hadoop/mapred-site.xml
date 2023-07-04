@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+ <!-- MapReduce 运行在 YARN 上 -->
+ <property>
+   <name>mapreduce.framework.name</name>
+   <value>yarn</value>
+ </property>
+ <!-- MapReduce Classpath -->
+ <property>
+   <name>yarn.app.mapreduce.am.env</name>
+   <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+ </property>
+ <property>
+   <name>mapreduce.map.env</name>
+   <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+ </property>
+ <property>
+   <name>mapreduce.reduce.env</name>
+   <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+ </property>
+ <!-- MapReduce JVM 参数（不允许换行） -->
+ <property>
+   <name>yarn.app.mapreduce.am.command-opts</name>
+   <value>-Xmx1024m --add-opens java.base/java.lang=ALL-UNNAMED</value>
+ </property>
+ <property>
+   <name>mapred.child.java.opts</name>
+   <value>--add-opens java.base/java.lang=ALL-UNNAMED -verbose:gc -Xloggc:/tmp/@taskid@.gc</value>
+ </property>
+</configuration>

@@ -1,0 +1,157 @@
+---
+- name: Install Hadoop Package
+  hosts: newborn
+  gather_facts: no
+  any_errors_fatal: true
+
+  vars:
+    local_repo: '../repo/hadoop'
+    remote_repo: '~/repo/hadoop'
+    package_info:
+      - {src: 'apache-zookeeper-3.6.3-bin.tar.gz', dst: 'apache/zookeeper-3.6.3', home: 'zookeeper'}
+      - {src: 'hbase-2.4.11-bin.tar.gz', dst: 'apache/hbase-2.4.11',home: 'hbase'}
+      - {src: 'hadoop-3.2.3.tar.gz', dst: 'apache/hadoop-3.2.3', home: 'hadoop'}
+
+  tasks:
+
+    - name: test connectivity
+      ping:
+
+    - name: copy hadoop package
+      copy:
+          src: '{{ local_repo }}'
+          dest: '~/repo'
+
+    - name: prepare directory
+      become: true # become root
+      file:
+        state: directory
+        path: '{{ deploy_dir }}/{{ item.dst }}'
+        owner: '{{ ansible_user }}'
+        group: '{{ ansible_user }}'
+        mode: 0775
+        recurse: yes
+      with_items: '{{ package_info }}'
+
+    - name: create link
+      become: true # become root
+      file:
+        state: link
+        src: '{{ deploy_dir }}/{{ item.dst }}'
+        dest: '{{ deploy_dir }}/{{ item.home }}'
+        owner: '{{ ansible_user }}'
+        group: '{{ ansible_user }}'
+      with_items: '{{ package_info }}'
+
+    - name: install package
+      unarchive:
+        src: '{{ remote_repo }}/{{ item.src }}'
+        dest: '{{ deploy_dir }}/{{ item.dst }}'
+        remote_src: yes
+        extra_opts:
+          - --strip-components=1
+      with_items: '{{ package_info }}'
+
+    - name: config /etc/profile
+      become: true
+      blockinfile:
+        dest: '/etc/profile'
+        marker: "# {mark} ANSIBLE MANAGED PROFILE"
+        block: |
+          export JAVA_HOME={{ deploy_dir }}/jdk8
+          export HADOOP_HOME={{ deploy_dir }}/hadoop
+          export HBASE_HOME={{ deploy_dir }}/hbase
+          export PATH=$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$HBASE_HOME/bin:$PATH
+
+    - name: config zkEnv.sh
+      lineinfile:
+        path: '{{ deploy_dir }}/zookeeper/bin/zkEnv.sh'
+        line: 'JAVA_HOME={{ deploy_dir }}/jdk17'
+        insertafter: '^#\!\/usr\/bin'
+        firstmatch: yes
+
+    - name: config hadoop-env.sh
+      blockinfile:
+        dest: '{{ deploy_dir }}/hadoop/etc/hadoop/hadoop-env.sh'
+        marker: "# {mark} ANSIBLE MANAGED DEFAULT HADOOP ENV"
+        block: |
+          export JAVA_HOME={{ deploy_dir }}/jdk8
+
+    - name: config hbase-env.sh
+      blockinfile:
+        dest: '{{ deploy_dir }}/hbase/conf/hbase-env.sh'
+        marker: "# {mark} ANSIBLE MANAGED DEFAULT HBASE ENV"
+        block: |
+          export JAVA_HOME={{ deploy_dir }}/jdk17
+          export HBASE_MANAGES_ZK=false
+          export HBASE_LIBRARY_PATH={{ deploy_dir }}/hadoop/lib/native
+          export HBASE_OPTS="$HBASE_OPTS --add-exports=java.base/jdk.internal.access=ALL-UNNAMED --add-exports=java.base/jdk.internal=ALL-UNNAMED --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED --add-exports=java.base/sun.security.pkcs=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/jdk.internal=ALL-UNNAMED --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/jdk.internal.access=ALL-UNNAMED"
+
+    - name: patch hbase
+      copy:
+        src: '{{ local_repo }}/hbase-server-2.4.11.jar'
+        dest: '{{ deploy_dir }}/hbase/lib'
+        backup: no
+        force: yes
+
+    - name: link hadoop config
+      file:
+        state: link
+        src: '{{ deploy_dir }}/hadoop/etc/hadoop/{{ item }}'
+        dest: '{{ deploy_dir }}/hbase/conf/{{ item }}'
+      with_items:
+        - core-site.xml
+        - hdfs-site.xml
+
+    - name: add epel-release repo
+      shell: 'sudo apt-get update && sudo apt-get install -y software-properties-common && sudo apt-get update'
+
+    - name: install native libary
+      shell: 'sudo apt-get update && sudo apt-get install -y libsnappy-dev liblz4-dev libzstd-dev'
+
+    - name: check hadoop native
+      shell: '{{ deploy_dir }}/hadoop/bin/hadoop checknative -a'
+      register: hadoop_checknative
+      failed_when: false
+      changed_when: false
+      ignore_errors: yes
+      environment:
+        JAVA_HOME: '{{ deploy_dir }}/jdk8'
+
+    - name: hadoop native status
+      debug:
+        msg: "{{ hadoop_checknative.stdout_lines }}"
+
+    - name: check hbase native
+      shell: '{{ deploy_dir }}/hbase/bin/hbase --config ~/conf_hbase org.apache.hadoop.util.NativeLibraryChecker'
+      register: hbase_checknative
+      failed_when: false
+      changed_when: false
+      ignore_errors: yes
+      environment:
+        JAVA_HOME: '{{ deploy_dir }}/jdk17'
+        HBASE_LIBRARY_PATH: '{{ deploy_dir }}/hadoop/lib/native'
+
+    - name: hbase native status
+      debug:
+        msg: "{{ hbase_checknative.stdout_lines|select('match', '^[^0-9]') | list }}"
+
+    - name: test native compresssion
+      shell: '{{ deploy_dir }}/hbase/bin/hbase org.apache.hadoop.hbase.util.CompressionTest file:///tmp/test {{ item }}'
+      register: 'compression'
+      failed_when: false
+      changed_when: false
+      ignore_errors: yes
+      environment:
+        JAVA_HOME: '{{ deploy_dir }}/jdk17'
+        HBASE_LIBRARY_PATH: '{{ deploy_dir }}/hadoop/lib/native'
+      with_items:
+        - snappy
+        - lz4
+
+    - name: native compresssion status
+      vars:
+        results: "{{ compression | json_query('results[*].{type:item, result:stdout}') }}"
+      debug:
+        msg: |
+          {% for r in results %} {{ r.type }} => {{ r.result == 'SUCCESS' }} {% endfor %}

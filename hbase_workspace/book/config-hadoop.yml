@@ -1,0 +1,58 @@
+---
+- name: Change Hadoop Config
+  hosts: hadoop_nodes
+  gather_facts: no
+  any_errors_fatal: true
+
+  vars:
+    template_dir: ../conf/hadoop
+    hadoop_home: '{{ deploy_dir }}/hadoop'
+    hadoop_conf_dir: '{{ hadoop_home }}/etc/hadoop'
+    hadoop_data_dir: '{{ data_dir }}/hadoop'
+
+  tasks:
+    - name: Include common vars
+      include_vars: file=vars.yml
+
+    - name: Create data directory
+      become: true
+      file:
+        state: directory
+        path: '{{ hadoop_data_dir }}'
+        owner: '{{ ansible_user }}'
+        group: '{{ ansible_user }}'
+        mode: 0775
+        recurse: yes
+
+    - name: Sync hadoop config
+      template:
+        src: '{{ template_dir }}/{{ item }}'
+        dest: '{{ hadoop_conf_dir }}/{{ item }}'
+      with_items:
+        - core-site.xml
+        - hdfs-site.xml
+        - mapred-site.xml
+        - yarn-site.xml
+        - workers
+
+    - name: Config hadoop env
+      blockinfile:
+        dest: '{{ hadoop_conf_dir }}/hadoop-env.sh'
+        marker: "# {mark} ANSIBLE MANAGED HADOOP ENV"
+        block: |
+          export HADOOP_PID_DIR={{ hadoop_home }}/pid
+          export HADOOP_LOG_DIR={{ hadoop_data_dir }}/logs
+
+          JVM_OPTS="-XX:+AlwaysPreTouch"
+          export HDFS_JOURNALNODE_OPTS="-Xmx1G $JVM_OPTS $HDFS_JOURNALNODE_OPTS"
+          export HDFS_NAMENODE_OPTS="-Xmx4G $JVM_OPTS $HDFS_NAMENODE_OPTS"
+          export HDFS_DATANODE_OPTS="-Xmx8G $JVM_OPTS $HDFS_DATANODE_OPTS"
+
+    - name: Config yarn env
+      blockinfile:
+        dest: '{{ hadoop_conf_dir }}/yarn-env.sh'
+        marker: "# {mark} ANSIBLE MANAGED YARN ENV"
+        block: |
+          JVM_OPTS=""
+          export YARN_RESOURCEMANAGER_OPTS="$JVM_OPTS $YARN_RESOURCEMANAGER_OPTS"
+          export YARN_NODEMANAGER_OPTS="$JVM_OPTS $YARN_NODEMANAGER_OPTS"

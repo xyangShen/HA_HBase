@@ -1,0 +1,52 @@
+---
+- name: Change HBase Config
+  hosts: hbase_nodes
+  gather_facts: no
+  any_errors_fatal: true
+
+  vars:
+    template_dir: ../conf/hbase
+    hbase_home: '{{ deploy_dir }}/hbase'
+    hbase_conf_dir: '{{ hbase_home }}/conf'
+    hbase_data_dir: '{{ data_dir }}/hbase'
+    hbase_log_dir: '{{ hbase_data_dir }}/logs'
+    hbase_gc_log_dir: '{{ hbase_log_dir }}/gc'
+
+  tasks:
+
+    - name: Include common vars
+      include_vars: file=vars.yml
+
+    - name: Create data directory
+      become: true
+      file:
+        state: directory
+        path: '{{ item }}'
+        owner: '{{ ansible_user }}'
+        group: '{{ ansible_user }}'
+        mode: 0775
+        recurse: yes
+      with_items:
+        - '{{ hbase_data_dir }}'
+        - '{{ hbase_log_dir }}'
+        - '{{ hbase_gc_log_dir }}'
+
+    - name: Sync hbase config
+      template:
+        src: '{{ template_dir }}/{{ item }}'
+        dest: '{{ hbase_conf_dir }}/{{ item }}'
+      with_items:
+        - hbase-site.xml
+        - backup-masters
+        - regionservers
+
+    - name: Config hbase env
+      blockinfile:
+        dest: '{{ hbase_conf_dir }}/hbase-env.sh'
+        marker: "# {mark} ANSIBLE MANAGED HBASE ENV"
+        block: |
+          export HBASE_LOG_DIR={{ hbase_log_dir }}
+
+          export HBASE_OPTS="-Xss256k -XX:+UseShenandoahGC -XX:+AlwaysPreTouch $HBASE_OPTS"
+          export HBASE_MASTER_OPTS="$HBASE_MASTER_OPTS -Xlog:gc:{{hbase_gc_log_dir}}/gc-hmaster-%p-%t.log"
+          export HBASE_REGIONSERVER_OPTS="$HBASE_REGIONSE
