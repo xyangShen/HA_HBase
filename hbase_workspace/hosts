@@ -1,0 +1,49 @@
+[newborn]
+10.182.0.24
+10.182.0.25
+10.182.0.26
+10.182.0.27
+
+[nodes]
+10.182.0.24 hostname='my.hadoop1 my.hbase1 my.zk1'
+10.182.0.25 hostname='my.hadoop2 my.hbase2 my.zk2'
+10.182.0.26 hostname='my.hadoop3 my.hbase3 my.zk3'
+10.182.0.27 hostname='my.hadoop4 my.hbase4'
+
+[zk_nodes]
+my.zk1 ansible_host=10.182.0.24 myid=1
+my.zk2 ansible_host=10.182.0.25 myid=2
+my.zk3 ansible_host=10.182.0.26 myid=3
+
+[hadoop_nodes]
+my.hadoop[1:4]
+
+[namenodes]
+my.hadoop1 id=nn1 rpc_port=8020 http_port=9870
+my.hadoop2 id=nn2 rpc_port=8020 http_port=9870
+
+[datanodes]
+my.hadoop[1:4]
+
+[journalnodes]
+my.hadoop1 journal_port=8485
+my.hadoop2 journal_port=8485
+my.hadoop3 journal_port=8485
+
+[resourcemanagers]
+my.hadoop3 id=rm1 peer_port=8032 tracker_port=8031 scheduler_port=8030 web_port=8088
+my.hadoop4 id=rm2 peer_port=8032 tracker_port=8031 scheduler_port=8030 web_port=8088
+
+[hbase_nodes]
+my.hbase[1:4]
+
+[hmasters]
+my.hbase[1:2]
+
+[regionservers]
+my.hbase[1:4]
+
+[all:vars]
+ansible_user=xyangshen99
+deploy_dir=/opt
+data_dir=/data

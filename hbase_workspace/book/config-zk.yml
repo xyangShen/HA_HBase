@@ -1,0 +1,50 @@
+---
+- name: Change Zk Config
+  hosts: zk_nodes
+  gather_facts: no
+  any_errors_fatal: true
+
+  vars:
+    template_dir: ../conf/zookeeper
+    zk_home: '{{ deploy_dir }}/zookeeper'
+    zk_data_dir: '{{ zk_home }}/status/data'
+    zk_data_log_dir: '{{ zk_home }}/status/logs'
+
+  tasks:
+
+    - name: Create data directory
+      file:
+        state: directory
+        path: '{{ item }}'
+        recurse: yes
+      with_items:
+        - '{{ zk_data_dir }}'
+        - '{{ zk_data_log_dir }}'
+
+    - name: Init zookeeper myid
+      template:
+        src: '{{ template_dir }}/myid'
+        dest: '{{ zk_data_dir }}'
+
+    - name: Update zookeeper env
+      become: true
+      blockinfile:
+        dest: '{{ zk_home }}/bin/zkEnv.sh'
+        marker: "# {mark} ANSIBLE MANAGED ZK ENV"
+        block: |
+          export SERVER_JVMFLAGS="-Xmx1G -XX:+UseShenandoahGC -XX:+AlwaysPreTouch -Djute.maxbuffer=8388608"
+      notify:
+        - Restart zookeeper service
+
+    - name: Update zookeeper config
+      template:
+        src: '{{ template_dir }}/zoo.cfg'
+        dest: '{{ zk_home }}/conf'
+      notify:
+        - Restart zookeeper service
+
+  handlers:
+    - name: Restart zookeeper service
+      shell:
+        cmd: 'export JAVA_HOME=/opt/jdk8'
+        cmd: '{{ zk_home }}/bin/zkServer.sh restart'

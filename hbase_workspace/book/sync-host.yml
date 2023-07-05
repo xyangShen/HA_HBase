@@ -1,0 +1,82 @@
+---
+- name: Config Hostname & SSH Keys
+  hosts: nodes
+  connection: local
+  gather_facts: no
+  any_errors_fatal: true
+
+  vars:
+    hostnames: |
+      {% for h in groups['nodes'] if hostvars[h].hostname is defined %}{{h}} {{ hostvars[h].hostname }}
+      {% endfor %}
+
+  tasks:
+
+    - name: test connectivity
+      ping:
+      connection: ssh
+
+    - name: change local hostname
+      become: true
+      blockinfile:
+        dest: '/etc/hosts'
+        marker: "# {mark} ANSIBLE MANAGED HOSTNAME"
+        block: '{{ hostnames }}'
+      run_once: true
+
+    - name: sync remote hostname
+      become: true
+      blockinfile:
+        dest: '/etc/hosts'
+        marker: "# {mark} ANSIBLE MANAGED HOSTNAME"
+        block: '{{ hostnames }}'
+      connection: ssh
+
+    - name: fetch exist status
+      stat:
+        path: '~/.ssh/id_rsa'
+      register: ssh_key_path
+      connection: ssh
+
+    - name: generate ssh key
+      openssh_keypair:
+        path: '~/.ssh/id_rsa'
+        comment: '{{ ansible_user }}@{{ inventory_hostname }}'
+        type: rsa
+        size: 2048
+        state: present
+        force: no
+      connection: ssh
+      when: not ssh_key_path.stat.exists
+
+    - name: collect ssh key
+      command: ssh {{ansible_user}}@{{ansible_host|default(inventory_hostname)}} 'cat ~/.ssh/id_rsa.pub'
+      register: host_keys  # cache data in hostvars[hostname].host_keys
+      changed_when: false
+
+    - name: create temp file
+      tempfile:
+        state: file
+        suffix: _keys
+      register: temp_ssh_keys
+      changed_when: false
+      run_once: true
+
+    - name: save ssh key ({{temp_ssh_keys.path}})
+      blockinfile:
+        dest: "{{temp_ssh_keys.path}}"
+        block: |  
+          {% for h in groups['nodes'] if hostvars[h].host_keys is defined %}  
+          {{ hostvars[h].host_keys.stdout }}  
+          {% endfor %}
+      changed_when: false
+      run_once: true
+
+    - name: deploy ssh key
+      vars:
+        ssh_keys: "{{ lookup('file', temp_ssh_keys.path).split('\n') | select('match', '^ssh') | join('\n') }}"
+      authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ ssh_keys }}"
+        state: present
+      connection: ssh

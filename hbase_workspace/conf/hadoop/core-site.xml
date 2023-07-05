@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <!-- 指定 NameNode 地址 (使用集群名称替代) -->
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://{{ hdfs_name }}</value>
+  </property>
+  <!-- 指定数据存储目录 -->
+  <property>
+    <name>hadoop.tmp.dir</name>
+    <value>{{ hadoop_data_dir }}</value>
+  </property>
+  <!-- 指定 Web 用户权限（默认用户 dr.who 无法上传文件） -->
+  <property>
+     <name>hadoop.http.staticuser.user</name>
+     <value>{{ ansible_user }}</value>
+  </property>
+  <!-- 指定 DFSZKFailoverController 所需的 ZK -->
+  <property>
+    <name>ha.zookeeper.quorum</name>
+    <value>{{ groups['zk_nodes'] | map('regex_replace','^(.+)$','\\1:2181') | join(',') }}</value>
+  </property>
+</configuration>
