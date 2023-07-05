@@ -219,20 +219,32 @@ We unmark
 ```commandline
 export HBASE_DISABLE_HADOOP_CLASSPATH_LOOKUP="true"
 ```
+Then we need to correct the hbase-env.sh file.
+```commandline
+nano /opt/hbase/conf/hbase-env.sh
+```
+Change last second line, remove ": 
+```commandline
+export HBASE_REGIONSERVER_OPTS=$HBASE_REGIONSE
+```
 Go to ansible host:
 ```commandline
 ansible-playbook book/config-hbase.yml
 ```
-Then at Ansible host, establish all connections
+Then at Ansible host, establish all connections(not sure if it's must)
 ```commandline
 ssh-copy-id xyangshen99@10.182.0.24
 ssh-copy-id xyangshen99@10.182.0.25
 ssh-copy-id xyangshen99@10.182.0.26
 ssh-copy-id xyangshen99@10.182.0.27
 ```
-Then go to HMaster
+Then go to each HMaster
 ```commandline
-sudo -- bash -c ". /etc/profile &&nohup start-hbase.sh"
+sudo -- bash -c ". /etc/profile && /opt/hbase/bin/hbase-daemon.sh start master"
+```
+Then go to each RegionServer:
+```commandline
+sudo -- bash -c ". /etc/profile && /opt/hbase/bin/hbase-daemon.sh start regionserver"
 ```
 Then we have our HBase started. Then
 ```commandline
@@ -240,3 +252,18 @@ cd /opt/hadoop/bin
 ./hadoop fs -ls /hbase
 ```
 By this you can see that HBase has its data written into HDFS.
+
+Then we start Thrift in the Background at the first HMaster:
+```commandline
+sudo -- bash -c ". /etc/profile && /opt/hbase/bin/hbase-daemon.sh start thrift -p 8018 --infoport 8888"
+```
+
+Everything done, try to test read and write to HBase. Also at the first HMaster:
+```commandline
+/opt/hbase
+./bin/hbase shell
+create 'test', 'col_family_one', 'col_family_two'
+list
+put 'test','1','col_family_one:col_one','1'
+get 'test', '1'
+```
